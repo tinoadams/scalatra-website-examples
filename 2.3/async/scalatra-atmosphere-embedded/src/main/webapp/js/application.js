@@ -1,3 +1,6 @@
+angular.module('TestApp', [])
+	.controller('TestController',TestModule.TestController);
+
 $(function() {
   "use strict";
 

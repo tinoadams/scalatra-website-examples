@@ -1,6 +1,6 @@
 <%@ val body:String %>
 <!DOCTYPE html>
-<html>
+<html ng-app="TestApp">
   <head>
     <title>Scalatra Atmosphere Example</title>
     <!-- Bootstrap -->
@@ -30,9 +30,11 @@
       <%= unescape(body) %>
 
     </div> <!-- /container -->
-    <script src="js/jquery-1.9.0.js"></script>
+    <script src="lib/jquery/dist/jquery.js"></script>
+    <script src="lib/jquery-atmosphere/jquery.atmosphere.js"></script>
+    <script src="lib/angular/angular.min.js"></script>
+    <script src="ts/test.js"></script>
     <script src="js/bootstrap.min.js"></script>
-    <script src="js/jquery-atmosphere.js"></script>
     <script src="js/application.js"></script>
   </body>
 </html>

@@ -1,0 +1,18 @@
+{
+  "main": "jquery.atmosphere.js",
+  "version": "2.1.5",
+  "dependencies": {
+    "jquery": ">= 1.9.0"
+  },
+  "name": "atmosphere-jquery",
+  "homepage": "https://github.com/flowersinthesand/bower-jquery-atmosphere",
+  "_release": "2.1.5",
+  "_resolution": {
+    "type": "version",
+    "tag": "v2.1.5",
+    "commit": "346205ea610cdd0e32567a7c3a00b87d8aa0094a"
+  },
+  "_source": "git://github.com/flowersinthesand/bower-jquery-atmosphere.git",
+  "_target": "~2.1.5",
+  "_originalSource": "jquery-atmosphere"
+}
