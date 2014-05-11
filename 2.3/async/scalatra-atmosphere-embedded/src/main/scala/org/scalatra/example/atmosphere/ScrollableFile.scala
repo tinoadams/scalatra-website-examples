@@ -11,9 +11,19 @@ import scala.concurrent.Promise
 import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
 import java.nio.CharBuffer
+//import scala.collection.JavaConversions._
+
+case class Window(start: Long, end: Long) {
+  require(start >= 0, "Window start must not be negative")
+  def size: Int = (end - start).toInt
+  def bof: Boolean = this.start == 0
+  def eof(that: Window): Boolean = this.end < that.end
+}
+
+case class ReadBuffer[A](buffer: A, window: Window)
 
 class ScrollableFile(val filename: String, val charsetName: String = "UTF-8", val preferedBufferSize: Int = 20) {
-  val lineSeperator = "\n"
+  val lineSeperator = '\n'
   val charset = Charset.forName(charsetName)
   val stringDecoder = charset.newDecoder()
   stringDecoder.onMalformedInput(CodingErrorAction.REPLACE)
@@ -23,17 +33,14 @@ class ScrollableFile(val filename: String, val charsetName: String = "UTF-8", va
   // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...
   val charByte = (1 / stringDecoder.averageCharsPerByte).toInt
   val bufferSize = preferedBufferSize + (preferedBufferSize % charByte)
-  val lineSeperatorByte = (charByte * lineSeperator.length())
+  val lineSeperatorByte = charByte
 
   //  private val handle = new RandomAccessFile(filename, "r")
   private val channel = AsynchronousFileChannel.open(Paths.get(filename))
-  private val bytes = ByteBuffer.allocate(bufferSize)
-  private val chars = CharBuffer.allocate(bufferSize)
 
   private var cursor = 0L
   private var lineSeperatorFound = false
-  case class Line(content: Option[String], cursor: Long)
-
+  /*
   def up(): Future[Option[String]] = {
     //    println("up:" + cursor)
     up(cursor).map { line =>
@@ -99,63 +106,87 @@ class ScrollableFile(val filename: String, val charsetName: String = "UTF-8", va
 
       case _ => line
     }
-  }
+  }*/
 
-  private def read(start: Long): Future[Line] = {
-    //    println("READ:" + start)
-    def doRead(start: Long) = {
-      //      println("DOREAD:" + start + " - " + (start + bytes.remaining()))
-      val (future, handler) = nioHandler
-      channel.read(bytes, start, null, handler)
-      future.map { read =>
-        if (read == -1) {
-          Line(None, start)
-        }
-        else {
-          bytes.flip() // prepare buffer for reading
-          chars.clear() // empty chars
-          // start new decoding sequence
-          stringDecoder.reset()
-          stringDecoder.decode(bytes, chars, true)
-          stringDecoder.flush(chars)
-          chars.flip() // prepare decoded chars for reading
-          // progress our virtual file position by as many bytes as the decoder has read
-          Line(Some(chars.toString), start + bytes.position())
-        }
+  def readLines(window: Window): Future[ReadBuffer[Array[String]]] = {
+    readChars(window).flatMap { cbuf =>
+      if (cbuf.buffer.limit == 0) {
+        Future.successful(ReadBuffer(Array(), cbuf.window))
       }
-    }
-
-    // we assume that decodeBytes only returns the number of bytes that have been read to decode the string
-    // eg. 19 bytes read but only 18 used to decode UTF-16 string
-    bytes.clear
-
-    if (start < 0) {
-      // equivalent to EOF, if we are at least one buffer length away from the file start
-      if ((start + bufferSize) <= 0)
-        Future(Line(None, 0))
-      // read from start of file
       else {
-        val limit = (start + bufferSize).toInt
-        //                println("LIMITING:" + limit)
-        bytes.limit(limit)
-        doRead(0)
+        def indexOfLastLineSeperator: Int = {
+          for (i <- cbuf.buffer.limit - 1 to 0 by -1)
+            if (cbuf.buffer.get(i) == lineSeperator) return i
+          return -1
+        }
+
+        val eof = cbuf.window.eof(window)
+        val lastSep = if (eof) cbuf.buffer.limit else indexOfLastLineSeperator
+        if (lastSep > -1) {
+          // TODO: make bytesFromEnd more accurate by using an encoder
+          val bytesFromEnd = charByte * (cbuf.buffer.limit - lastSep)
+          val adjustedWindow = cbuf.window.copy(
+            end = cbuf.window.end - bytesFromEnd
+          )
+          val string = cbuf.buffer.toString
+          val substr = string.substring(0, lastSep)
+          Future.successful(ReadBuffer(substr.split(lineSeperator), adjustedWindow))
+        }
+        // looooong line and still haven't reached EOF
+        else {
+          val nextWindow = cbuf.window.copy(
+            start = cbuf.window.end,
+            end = cbuf.window.end + window.size
+          )
+          readLines(nextWindow).map { lbuf =>
+            val string = cbuf.buffer.toString
+            val adjustedWindow = cbuf.window.copy(
+              end = lbuf.window.end
+            )
+            if (lbuf.buffer.length > 0)
+              lbuf.buffer(0) = string + lbuf.buffer(0)
+            ReadBuffer(lbuf.buffer, adjustedWindow)
+          }
+        }
       }
-    }
-    else {
-      // clear potential left overs from last use
-      // normal read from given start position
-      doRead(start)
     }
   }
 
-  def nioHandler: (Future[Integer], CompletionHandler[Integer, java.lang.Object]) = {
+  private def readChars(window: Window): Future[ReadBuffer[CharBuffer]] = {
+    readBytes(window).map { bbuf =>
+      val chars = CharBuffer.allocate(window.size)
+      if (bbuf.buffer.limit == 0) {
+        chars.flip()
+        ReadBuffer(chars, bbuf.window)
+      }
+      else {
+        stringDecoder.reset()
+        stringDecoder.decode(bbuf.buffer, chars, true)
+        stringDecoder.flush(chars)
+        chars.flip() // prepare decoded chars for reading
+        // adjust the window end to as many bytes we were able to decode
+        val adjustedWindow = bbuf.window.copy(end = bbuf.window.start + bbuf.buffer.position)
+        ReadBuffer(chars, adjustedWindow)
+      }
+    }
+  }
+
+  private def readBytes(window: Window): Future[ReadBuffer[ByteBuffer]] = {
     val promise = Promise[Integer]()
+    val future = promise.future
     val handler = new CompletionHandler[Integer, java.lang.Object]() {
       override def completed(result: Integer, attachment: java.lang.Object): Unit = promise.success(result)
       override def failed(e: Throwable, attachment: java.lang.Object): Unit = promise.failure(e)
     }
 
-    (promise.future, handler)
+    val bytes = ByteBuffer.allocate(window.size)
+    channel.read(bytes, window.start, null, handler)
+    future.map { read =>
+      bytes.flip() // prepare buffer for reading
+      val eof = read != window.size
+      val adjustedWindow = if (eof) window.copy(end = window.start + read) else window
+      ReadBuffer(bytes, adjustedWindow)
+    }
   }
 
   def close = channel.close()

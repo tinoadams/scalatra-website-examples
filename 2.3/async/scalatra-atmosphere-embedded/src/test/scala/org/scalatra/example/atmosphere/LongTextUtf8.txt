@@ -1,0 +1,2 @@
+Buffers can be either direct or nonDirect. Direct: Creating a direct buffer simply means that the buffer is allocated
+inside the native data structure. That means that data can be transferred to native resources without having to go trough the java data structure. That can have a really good impact on performance.

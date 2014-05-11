@@ -6,8 +6,15 @@ import scala.concurrent._
 import scala.concurrent.duration._
 
 class ScrollableFileTest {
-
   @Test
+  def multipleLinesInBuffer() {
+    val filename = this.getClass().getResource("LongTextUtf8.txt").getFile()
+    val f = new ScrollableFile(filename, "UTF-8", 20)
+    for (l <- Await.result(f.readLines(Window(0,10000)), 100 seconds).buffer)
+      println("Line: " + l)
+  }
+
+  /*@Test
   def multipleLinesInBuffer() {
     val filename = this.getClass().getResource("ShortTextUtf8.txt").getFile()
     val f = new ScrollableFile(filename, "UTF-8", 20)
@@ -64,6 +71,6 @@ class ScrollableFileTest {
     assertEquals(None, Await.result(f.down, 2 seconds))
     assertEquals(Some("import org.;scalatra._"), Await.result(f.up, 2 seconds))
     assertEquals(Some("import org.;scalatra._"), Await.result(f.down, 2 seconds))
-  }
+  }*/
 
 }
