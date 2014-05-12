@@ -30,6 +30,7 @@
       <%= unescape(body) %>
 
     </div> <!-- /container -->
+    <script src="lib/underscore/underscore.js"></script>
     <script src="lib/jquery/dist/jquery.js"></script>
     <script src="lib/jquery-atmosphere/jquery.atmosphere.js"></script>
     <script src="lib/angular/angular.min.js"></script>

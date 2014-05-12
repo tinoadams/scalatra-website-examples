@@ -1,6 +1,7 @@
 angular.module('TestApp', [])
 	.controller('TestController',TestModule.TestController);
 
+/*
 $(function() {
   "use strict";
 
@@ -80,7 +81,7 @@ $(function() {
     }));
   };
 
-  subSocket = socket.subscribe(request);
+//  subSocket = socket.subscribe(request);
 
   input.keydown(function(e) {
     if (e.keyCode === 13) {
@@ -118,3 +119,4 @@ $(function() {
         '<p><span style="color:' + color + '">' + author + '</span> @ ' + +(datetime.getHours() < 10 ? '0' + datetime.getHours() : datetime.getHours()) + ':' + (datetime.getMinutes() < 10 ? '0' + datetime.getMinutes() : datetime.getMinutes()) + ': ' + message + '</p>');
   }
 });
+*/
