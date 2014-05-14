@@ -4,6 +4,8 @@
   "devDependencies": {
     "grunt": "^0.4.4",
     "grunt-ts": "^1.11.2",
-    "grunt-cli": "^0.1.13"
+    "grunt-cli": "^0.1.13",
+    "grunt-notify": "~0.3.0",
+    "grunt-contrib-watch": "~0.6.1"
   }
 }

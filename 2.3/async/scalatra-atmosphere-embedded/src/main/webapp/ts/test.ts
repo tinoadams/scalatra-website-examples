@@ -4,7 +4,7 @@
 
 module TestModule {
 
-    class Window {
+    export class Window {
         public bottom: number;
 
         constructor(public top: number, public height: number) {
@@ -38,22 +38,22 @@ module TestModule {
         }
 
         shift(lineCount: number): Window {
-            return new Window(Math.max(0, this.top + lineCount), this.height);
+            return new Window(this.top + lineCount, this.height);
         }
 
     }
 
-    interface ConnectionChangeCallback {
+    export interface ConnectionChangeCallback {
         (boolean): void
     }
 
 
-    class Chunk {
+    export class Chunk {
         constructor(public start: number, public end: number, public lines: string[]) {
         }
     }
 
-    class ServerFile {
+    export class ServerFile {
         private socket = (<any>$).atmosphere;
         private transport = 'websocket';
         private fallbackTransport = 'long-polling';
@@ -156,7 +156,7 @@ module TestModule {
         }
 
         readChunk(start: number= 0, end: number= this.chunkSize): ng.IPromise<Chunk> {
-            var data = { command: 'read_file', start: start, end: end };
+            var data = { command: 'read_file', start: Math.max(0, start), end: end };
             return this.send(data)
                 .then((response): any => {
                     if (
@@ -167,17 +167,21 @@ module TestModule {
                         return this.$q.reject(["read_file response is invalid"]);
                     this.start = response.actual_start;
                     this.end = response.actual_end;
-                    var lines = _.map(response.lines, (line: string) => line);
+                    console.log('start,end', response.actual_start, response.actual_end);
+                    var lines = _.map(response.lines, (line: string) => line + "(" + response.id + ")");
+                    lines.push('------------------' + "(" + response.id + ")");
                     return new Chunk(response.actual_start, response.actual_end, lines);
                 });
         }
 
         nextChunk(current: Chunk): ng.IPromise<Chunk> {
-            return this.readChunk(current.end + 1, current.end + this.chunkSize);
+            var start = current.end + 1;
+            return this.readChunk(start, start + this.chunkSize);
         }
 
         previousChunk(current: Chunk): ng.IPromise<Chunk> {
-            return this.readChunk(current.start - this.chunkSize, current.start);
+            var start = current.start - this.chunkSize - 1;
+            return this.readChunk(start, start + this.chunkSize);
         }
 
         onConnectionChanged(callback: ConnectionChangeCallback) {
@@ -191,14 +195,32 @@ module TestModule {
         }
     }
 
-    class LineBuffer {
+    export class LineBuffer {
         private chunks: Chunk[] = [];
-        private buffer: string[] = [];
-        private index: Window = new Window(0, 0);
+        public lines: string[] = [];
+        public index: Window = new Window(0, 0);
         private serverFile: ServerFile;
 
-        constructor(private bufferSize: number, private visibleLines: number) {
+        constructor(private visibleLines: number) {
             this.index = new Window(0, 0);
+        }
+
+        // again Angular .then accepts simple values or another promise in return (map and flatMap) which makes the type incorrect
+        private addChunk(lastChunk: Chunk): any {
+            return this.serverFile.nextChunk(lastChunk)
+                .then((chunk): any => {
+                    this.chunks.push(chunk);
+                    // append lines to buffer
+                    var al = this.lines.length;
+                    var bl = chunk.lines.length;
+                    var i = 0;
+                    while (i < bl) this.lines[al++] = chunk.lines[i++];
+                    // rinse and repeat
+                    if (this.lines.length > this.visibleLines * 3)
+                        return this.currentLines();
+                    else
+                        return this.addChunk(chunk);
+                });
         }
 
         setFile(serverFile: ServerFile): ng.IPromise<string[]> {
@@ -206,97 +228,100 @@ module TestModule {
             this.index = new Window(0, this.visibleLines);
             return this.serverFile.readChunk()
                 .then((chunk) => {
-                    this.chunks.push(chunk);
-                    this.buffer = chunk.lines;
-                    return this.currentLines();
+                    this.chunks = [chunk];
+                    this.lines = _.map(chunk.lines, (line) => line);
+                    // make sure we load at least three time the number of visible lines
+                    if (this.lines.length > this.visibleLines * 3)
+                        return this.currentLines();
+                    else
+                        return <string[]>this.addChunk(chunk);
                 });
         }
 
         currentLines(): string[] {
             var list: string[] = [];
-            var limit = Math.min(this.buffer.length, this.index.bottom);
+            var limit = Math.min(this.lines.length, this.index.bottom);
             for (var i = this.index.top; i <= limit; i++)
-                list.push(this.buffer[i]);
+                list.push(this.lines[i]);
             return list;
         }
 
-        lineUp(): string {
+        lineUp($scope): string {
             if (this.index.reachedTop()) return;
             // append new lines to the buffer and drop old ones on top
-            if (!this.index.inBottomThird(this.buffer.length) && this.index.inTopThird(this.buffer.length) && this.chunks.length && this.serverFile) {
+            if (!this.index.inBottomThird(this.lines.length) && this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var firstChunk = this.chunks[0];
                 // dont try to read beyond the start of a file
-                if (firstChunk.start === 0) return;
-                this.serverFile.previousChunk(firstChunk)
-                    .then((chunk) => {
-                        console.log("++++++++index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
-                        if (this.chunks.length > 2) {
-                            // remove the last chunk from buffer
-                            var lastChunk = this.chunks[this.chunks.length - 1];
-                            var count = lastChunk.lines.length;
-                            console.log("count , buffer", count, this.buffer.length);
-                            this.buffer.splice(this.buffer.length - count, count);
-                            console.log("count , buffer", count, this.buffer.length);
-                            // adjust the window
-                            this.index = this.index.shift(count);
-                            // drop the first chunk
-                            this.chunks.pop();
-                        }
-                        // prepend new lines to the buffer
-                        this.buffer = chunk.lines.concat(this.buffer);
+                if (firstChunk.start !== 0) {
+                    this.serverFile.previousChunk(firstChunk)
+                        .then((chunk) => {
+                            //                        console.log("++++++++index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
+                            if (this.chunks.length > 2) {
+                                // drop the first chunk
+                                var lastChunk = this.chunks.pop();
+                                var count = lastChunk.lines.length;
+                                //                            console.log("count , buffer", count, this.buffer.length);
+                                this.lines.splice(this.lines.length - count, count);
+                                //                            console.log("count , buffer", count, this.buffer.length);
+                                // adjust the window
+                                this.index = this.index.shift(count);
 
-                        // add the new one at the top
-                        this.chunks.unshift(chunk);
-                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
-                    });
+                            }
+                            // prepend new lines to the buffer
+                            this.lines = chunk.lines.concat(this.lines);
+                            //$scope.$apply();
+
+                            // add the new one at the top
+                            this.chunks.unshift(chunk);
+                            //                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
+                        });
+                }
             }
             this.index = this.index.up();
-            return this.index.top + this.buffer[this.index.top];
+            return this.lines[this.index.top];
         }
 
-        lineDown(): string {
-            if (this.index.reachedEnd(this.buffer.length)) return;
+        lineDown($scope): string {
+            if (this.index.reachedEnd(this.lines.length)) return;
             // append new lines to the buffer and drop old ones on top
-            if (this.index.inBottomThird(this.buffer.length) && !this.index.inTopThird(this.buffer.length) && this.chunks.length && this.serverFile) {
+            if (this.index.inBottomThird(this.lines.length) && !this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var lastChunk = this.chunks[this.chunks.length - 1];
                 this.serverFile.nextChunk(lastChunk)
                     .then((chunk) => {
-                        console.log(this.chunks);
-                        var chunks: Chunk[] = [];
-                        for (var i = 0; i < this.chunks.length; i++)
-                            chunks.push(this.chunks[i]);
-                        console.log(chunks);
-                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
+                        //                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
                         if (this.chunks.length > 2) {
                             // drop the first chunk
-                            var firstChunk = chunks.shift();
-                            console.log("firstchunk", firstChunk);
+                            var firstChunk = this.chunks.shift();
+                            //                            console.log("firstchunk", firstChunk);
                             var count = firstChunk.lines.length;
-                            console.log("count , buffer", count, this.buffer.length);
-                            this.buffer.splice(0, count);
-                            console.log("count , buffer", count, this.buffer.length);
+                            //                            console.log("count , buffer", count, this.buffer.length);
+                            this.lines.splice(0, count);
+                            //                            console.log("count , buffer", count, this.buffer.length);
                             // adjust the window
                             this.index = this.index.shift(-count);
                         }
                         // add the new lines to the buffer
-                        Array.prototype.push.apply(this.buffer, chunk.lines);
+                        //                        Array.prototype.push.apply(this.buffer, chunk.lines);
                         //                        _.each(chunk.lines, (line) => this.buffer.push(line));
-
+                        var al = this.lines.length;
+                        var bl = chunk.lines.length;
+                        var i = 0;
+                        while (i < bl) this.lines[al++] = chunk.lines[i++];
+                        //$scope.$apply();
 
                         // add the new one at the bottom
-                        chunks.push(chunk);
-                        this.chunks = chunks;
-                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
+                        this.chunks.push(chunk);
+                        //                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
                     });
             }
             this.index = this.index.down();
-            return this.index.bottom + this.buffer[this.index.bottom];
+            return this.lines[this.index.bottom];
         }
     }
 
     export class TestController {
         private serverFile: ServerFile;
-        private buffer = new LineBuffer(100, 10);
+        public buffer = new LineBuffer(10);
         public connectionOpen = false;
         public filename = 'angular.js';
 
@@ -304,7 +329,7 @@ module TestModule {
         constructor(private $scope: any, private $q: ng.IQService) {
             $scope.model = this;
             var onConnectionChanged = (open) => $scope.$apply(() => { this.connectionOpen = open });
-            this.serverFile = new ServerFile($q, 1024, onConnectionChanged);
+            this.serverFile = new ServerFile($q, 64, onConnectionChanged);
         }
 
         keypressed(event): void {
@@ -319,7 +344,7 @@ module TestModule {
         }
 
         lineUp(): void {
-            var line = this.buffer.lineUp();
+            var line = this.buffer.lineUp(this.$scope);
             if (line) {
                 var viewer: any = $("#viewer");
                 var children: any = viewer.children();
@@ -331,7 +356,7 @@ module TestModule {
         }
 
         lineDown(): void {
-            var line = this.buffer.lineDown();
+            var line = this.buffer.lineDown(this.$scope);
             if (line) {
                 var viewer: any = $("#viewer");
                 viewer.children()[0].remove();
@@ -345,7 +370,8 @@ module TestModule {
                     this.buffer.setFile(this.serverFile)
                         .then((lines) => {
                             var viewer: any = $("#viewer");
-                            _.each(lines, (line, index) => viewer.append(this.renderLine(index + line)));
+                            var p = _.reduce(lines, (acc: string, line) => acc + this.renderLine(line), "");
+                            viewer.html(p);
                         })
                         .catch((response) => {
                             console.log('failure', response);

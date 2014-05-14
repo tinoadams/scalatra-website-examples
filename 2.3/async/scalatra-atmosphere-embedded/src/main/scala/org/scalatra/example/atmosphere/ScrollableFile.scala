@@ -103,10 +103,9 @@ class LineFile(val fileUri: URI, val charsetName: String = "UTF-8") {
   val stringDecoder = charset.newDecoder()
   stringDecoder.onMalformedInput(CodingErrorAction.REPLACE)
   stringDecoder.onUnmappableCharacter(CodingErrorAction.REPLACE)
-
-  // size the buffer so we can try and always fit whole chars in it
-  // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...
-  val charByte = (1 / stringDecoder.averageCharsPerByte).toInt
+  val stringEncoder = charset.newEncoder()
+  stringEncoder.onMalformedInput(CodingErrorAction.REPLACE)
+  stringEncoder.onUnmappableCharacter(CodingErrorAction.REPLACE)
 
   //  private val handle = new RandomAccessFile(filename, "r")
   private val channel = AsynchronousFileChannel.open(Paths.get(fileUri))
@@ -126,14 +125,16 @@ class LineFile(val fileUri: URI, val charsetName: String = "UTF-8") {
         val eof = cbuf.window.eof(window)
         val lastSep = if (eof) cbuf.buffer.limit else indexOfLastLineSeperator
         if (lastSep > -1) {
-          // TODO: make bytesFromEnd more accurate by using an encoder
-          val bytesFromEnd = charByte * (cbuf.buffer.limit - lastSep)
-          val adjustedWindow = cbuf.window.copy(
-            end = cbuf.window.end - bytesFromEnd
-          )
+          if (!eof)
+            cbuf.buffer.limit(lastSep + 1)
           val string = cbuf.buffer.toString
-          val substr = string.substring(0, lastSep)
-          Future.successful(ReadBuffer(substr.split(lineSeperator), adjustedWindow))
+          // size the buffer so we can try and always fit whole chars in it
+          // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...
+          stringEncoder.reset()
+          val bbuf = stringEncoder.encode(cbuf.buffer)
+          val bytes = bbuf.limit
+          val adjustedWindow = cbuf.window.copy(end = cbuf.window.start + bytes)
+          Future.successful(ReadBuffer(string.split(lineSeperator), adjustedWindow))
         }
         // looooong line and still haven't reached EOF
         else {
