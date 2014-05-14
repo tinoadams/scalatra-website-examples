@@ -20,6 +20,7 @@ import java.nio.file.Paths
 import java.nio.file.StandardWatchEventKinds
 import scala.collection.JavaConversions._
 import java.io.RandomAccessFile
+import java.net.URI
 
 class ChatController extends ScalatraServlet
   with ScalateSupport with JValueResult
@@ -35,10 +36,11 @@ class ChatController extends ScalatraServlet
 
   atmosphere("/the-chat") {
     new AtmosphereClient {
-      case class OpenFile(handle: RandomAccessFile, start: Long = 0, end: Long = 0)
-      var fileHandle: Option[OpenFile] = None
+      var fileHandle: Option[LineFile] = None
 
-      def closeFile = fileHandle.foreach(_.handle.close)
+      def closeFile = fileHandle.foreach(_.close)
+
+      def addError(json: JValue, msg: String): JValue = json merge (("errors" -> List(msg)): JValue)
 
       def receive: AtmoReceive = {
         case Connected =>
@@ -57,23 +59,42 @@ class ChatController extends ScalatraServlet
           send(("author" -> "system") ~ ("message" -> "Only json is allowed") ~ ("time" -> (new Date().getTime.toString)))
 
         case JsonMessage(json) =>
-          println("Got message %s from %s".format((json \ "message").extract[String], (json \ "author").extract[String]))
-          json \ "message" match {
-            case JString(cmd) if cmd.startsWith("open ") =>
-              val Array(_, file) = cmd.split(" ")
-              closeFile
-              fileHandle = Some(OpenFile(new RandomAccessFile(file, "r")))
-              val lines = for (i <- 1 to 3) yield fileHandle.get.handle.readLine
-              val msg = json merge (("message" -> lines.mkString("<br/>")): JValue)
-              fileHandle = fileHandle.map(_.copy(end = fileHandle.get.handle.getFilePointer()))
-              send(msg)
-            case JString("d") | JString("D") =>
+          println(json)
 
-            case _ =>
+          val JInt(commandId) = json \ "id"
+          val JString(command) = json \ "command"
+
+          try {
+            command match {
+              case "open_file" =>
+                val JString(filename) = json \ "filename"
+                val baseDir = "file:/C:/projects/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
+                val uri = URI.create(baseDir + filename)
+                fileHandle = Some(new LineFile(uri))
+                send(json)
+
+              case "read_file" =>
+                val JInt(start) = json \ "start"
+                val JInt(end) = json \ "end"
+                if (fileHandle.isEmpty)
+                  send(addError(json, "Test"))
+                else
+                  fileHandle.foreach { file =>
+                    val me = Me
+                    file.readLines(Window(start.toLong, end.toLong)).map { readbuffer =>
+                      val result = json merge (
+                        ("lines" -> readbuffer.buffer.toList)
+                        ~ ("actual_start" -> readbuffer.window.start)
+                        ~ ("actual_end" -> readbuffer.window.end)
+                      )
+                      broadcast(result, to = me)
+                    }
+                  }
+            }
           }
-          val msg = json merge (("time" -> (new Date().getTime().toString)): JValue)
-          broadcast(msg) // by default a broadcast is to everyone but self
-        //  send(msg) // also send to the sender
+          catch {
+            case e: Throwable => send(addError(json, e.getMessage()))
+          }
       }
     }
   }

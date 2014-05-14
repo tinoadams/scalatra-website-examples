@@ -11,6 +11,7 @@ import scala.concurrent.Promise
 import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
 import java.nio.CharBuffer
+import java.net.URI
 //import scala.collection.JavaConversions._
 
 case class Window(start: Long, end: Long) {
@@ -22,24 +23,10 @@ case class Window(start: Long, end: Long) {
 
 case class ReadBuffer[A](buffer: A, window: Window)
 
-class ScrollableFile(val filename: String, val charsetName: String = "UTF-8", val preferedBufferSize: Int = 20) {
-  val lineSeperator = '\n'
-  val charset = Charset.forName(charsetName)
-  val stringDecoder = charset.newDecoder()
-  stringDecoder.onMalformedInput(CodingErrorAction.REPLACE)
-  stringDecoder.onUnmappableCharacter(CodingErrorAction.REPLACE)
-
-  // size the buffer so we can try and always fit whole chars in it
-  // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...
-  val charByte = (1 / stringDecoder.averageCharsPerByte).toInt
-  val bufferSize = preferedBufferSize + (preferedBufferSize % charByte)
-  val lineSeperatorByte = charByte
-
-  //  private val handle = new RandomAccessFile(filename, "r")
-  private val channel = AsynchronousFileChannel.open(Paths.get(filename))
-
+class ScrollableFile(val fileUri: URI, val charsetName: String = "UTF-8", val preferedBufferSize: Int = 20) {
   private var cursor = 0L
   private var lineSeperatorFound = false
+
   /*
   def up(): Future[Option[String]] = {
     //    println("up:" + cursor)
@@ -107,6 +94,22 @@ class ScrollableFile(val filename: String, val charsetName: String = "UTF-8", va
       case _ => line
     }
   }*/
+
+}
+
+class LineFile(val fileUri: URI, val charsetName: String = "UTF-8") {
+  val lineSeperator = '\n'
+  val charset = Charset.forName(charsetName)
+  val stringDecoder = charset.newDecoder()
+  stringDecoder.onMalformedInput(CodingErrorAction.REPLACE)
+  stringDecoder.onUnmappableCharacter(CodingErrorAction.REPLACE)
+
+  // size the buffer so we can try and always fit whole chars in it
+  // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...
+  val charByte = (1 / stringDecoder.averageCharsPerByte).toInt
+
+  //  private val handle = new RandomAccessFile(filename, "r")
+  private val channel = AsynchronousFileChannel.open(Paths.get(fileUri))
 
   def readLines(window: Window): Future[ReadBuffer[Array[String]]] = {
     readChars(window).flatMap { cbuf =>

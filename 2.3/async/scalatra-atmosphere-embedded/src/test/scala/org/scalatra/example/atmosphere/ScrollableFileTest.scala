@@ -8,8 +8,9 @@ import scala.concurrent.duration._
 class ScrollableFileTest {
   @Test
   def multipleLinesInBuffer() {
-    val filename = this.getClass().getResource("LongTextUtf8.txt").getFile()
-    val f = new ScrollableFile(filename, "UTF-8", 20)
+    val filename = this.getClass().getResource("LongTextUtf8.txt").toURI()
+    println(filename)
+    val f = new LineFile(filename, "UTF-8")
     for (l <- Await.result(f.readLines(Window(0,10000)), 100 seconds).buffer)
       println("Line: " + l)
   }
