@@ -6,12 +6,12 @@ var TestModule;
             this.height = height;
             this.bottom = top + height - 1;
         }
-        Window.prototype.reachedTop = function () {
-            return this.top <= 0;
+        Window.prototype.reachedTop = function (lines) {
+            return (this.top - lines) < 0;
         };
 
-        Window.prototype.reachedEnd = function (lineCount) {
-            return this.bottom >= lineCount - 1;
+        Window.prototype.reachedEnd = function (lines, lineCount) {
+            return (this.bottom + lines) >= lineCount;
         };
 
         Window.prototype.inTopThird = function (lineCount) {
@@ -24,12 +24,12 @@ var TestModule;
             return this.bottom >= boundary;
         };
 
-        Window.prototype.up = function () {
-            return new Window(this.top - 1, this.height);
+        Window.prototype.up = function (lines) {
+            return new Window(this.top - lines, this.height);
         };
 
-        Window.prototype.down = function () {
-            return new Window(this.top + 1, this.height);
+        Window.prototype.down = function (lines) {
+            return new Window(this.top + lines, this.height);
         };
 
         Window.prototype.shift = function (lineCount) {
@@ -160,20 +160,20 @@ var TestModule;
                 _this.end = response.actual_end;
                 console.log('start,end', response.actual_start, response.actual_end);
                 var lines = _.map(response.lines, function (line) {
-                    return line + "(" + response.id + ")";
+                    return line;
                 });
-                lines.push('------------------' + "(" + response.id + ")");
+
                 return new Chunk(response.actual_start, response.actual_end, lines);
             });
         };
 
         ServerFile.prototype.nextChunk = function (current) {
-            var start = current.end + 1;
+            var start = current.end;
             return this.readChunk(start, start + this.chunkSize);
         };
 
         ServerFile.prototype.previousChunk = function (current) {
-            var start = current.start - this.chunkSize - 1;
+            var start = current.start - this.chunkSize;
             return this.readChunk(start, start + this.chunkSize);
         };
 
@@ -195,6 +195,7 @@ var TestModule;
     var LineBuffer = (function () {
         function LineBuffer(visibleLines) {
             this.visibleLines = visibleLines;
+            this.visibleLinesBufferFactor = 6;
             this.chunks = [];
             this.lines = [];
             this.index = new Window(0, 0);
@@ -211,7 +212,7 @@ var TestModule;
                 while (i < bl)
                     _this.lines[al++] = chunk.lines[i++];
 
-                if (_this.lines.length > _this.visibleLines * 3)
+                if (_this.lines.length > _this.visibleLines * _this.visibleLinesBufferFactor)
                     return _this.currentLines();
                 else
                     return _this.addChunk(chunk);
@@ -228,7 +229,7 @@ var TestModule;
                     return line;
                 });
 
-                if (_this.lines.length > _this.visibleLines * 3)
+                if (_this.lines.length > _this.visibleLines * _this.visibleLinesBufferFactor)
                     return _this.currentLines();
                 else
                     return _this.addChunk(chunk);
@@ -243,10 +244,10 @@ var TestModule;
             return list;
         };
 
-        LineBuffer.prototype.lineUp = function ($scope) {
+        LineBuffer.prototype.up = function (lines) {
             var _this = this;
-            if (this.index.reachedTop())
-                return;
+            if (this.index.reachedTop(lines))
+                return null;
 
             if (!this.index.inBottomThird(this.lines.length) && this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var firstChunk = this.chunks[0];
@@ -268,14 +269,14 @@ var TestModule;
                     });
                 }
             }
-            this.index = this.index.up();
-            return this.lines[this.index.top];
+            this.index = this.index.up(lines);
+            return this.lines.slice(this.index.top, this.index.top + lines);
         };
 
-        LineBuffer.prototype.lineDown = function ($scope) {
+        LineBuffer.prototype.down = function (lines) {
             var _this = this;
-            if (this.index.reachedEnd(this.lines.length))
-                return;
+            if (this.index.reachedEnd(lines, this.lines.length))
+                return null;
 
             if (this.index.inBottomThird(this.lines.length) && !this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var lastChunk = this.chunks[this.chunks.length - 1];
@@ -299,8 +300,30 @@ var TestModule;
                     _this.chunks.push(chunk);
                 });
             }
-            this.index = this.index.down();
-            return this.lines[this.index.bottom];
+            this.index = this.index.down(lines);
+            return this.lines.slice(this.index.bottom, this.index.bottom + lines);
+        };
+
+        LineBuffer.prototype.lineUp = function () {
+            var line = this.up(1);
+            if (!line || !line.length)
+                return null;
+            return line[0];
+        };
+
+        LineBuffer.prototype.lineDown = function () {
+            var line = this.down(1);
+            if (!line || !line.length)
+                return null;
+            return line[0];
+        };
+
+        LineBuffer.prototype.pageUp = function () {
+            return this.up(this.visibleLines);
+        };
+
+        LineBuffer.prototype.pageDown = function () {
+            return this.down(this.visibleLines);
         };
         return LineBuffer;
     })();
@@ -327,6 +350,10 @@ var TestModule;
                 this.lineUp();
             else if (event.keyCode == 40)
                 this.lineDown();
+            else if (event.keyCode == 33)
+                this.pageUp();
+            else if (event.keyCode == 34)
+                this.pageDown();
         };
 
         TestController.prototype.renderLine = function (msg) {
@@ -334,7 +361,7 @@ var TestModule;
         };
 
         TestController.prototype.lineUp = function () {
-            var line = this.buffer.lineUp(this.$scope);
+            var line = this.buffer.lineUp();
             if (line) {
                 var viewer = $("#viewer");
                 var children = viewer.children();
@@ -346,7 +373,7 @@ var TestModule;
         };
 
         TestController.prototype.lineDown = function () {
-            var line = this.buffer.lineDown(this.$scope);
+            var line = this.buffer.lineDown();
             if (line) {
                 var viewer = $("#viewer");
                 viewer.children()[0].remove();
@@ -354,17 +381,34 @@ var TestModule;
             }
         };
 
+        TestController.prototype.showLines = function (lines) {
+            var _this = this;
+            var viewer = $("#viewer");
+            var p = _.reduce(lines, function (acc, line) {
+                return acc + _this.renderLine(line);
+            }, "");
+            viewer.html(p);
+        };
+
+        TestController.prototype.pageUp = function () {
+            var lines = this.buffer.pageUp();
+            if (lines && lines.length)
+                this.showLines(lines);
+        };
+
+        TestController.prototype.pageDown = function () {
+            var lines = this.buffer.pageDown();
+            if (lines && lines.length)
+                this.showLines(lines);
+        };
+
         TestController.prototype.openFile = function (filename) {
             var _this = this;
             this.serverFile.openFile(filename).then(function (response) {
                 _this.buffer.setFile(_this.serverFile).then(function (lines) {
-                    var viewer = $("#viewer");
-                    var p = _.reduce(lines, function (acc, line) {
-                        return acc + _this.renderLine(line);
-                    }, "");
-                    viewer.html(p);
+                    return _this.showLines(lines);
                 }).catch(function (response) {
-                    console.log('failure', response);
+                    return console.log('failure', response);
                 });
             }).catch(function (response) {
                 console.log('failure', response);

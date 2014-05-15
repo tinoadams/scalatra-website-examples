@@ -118,15 +118,14 @@ class LineFile(val fileUri: URI, val charsetName: String = "UTF-8") {
       else {
         def indexOfLastLineSeperator: Int = {
           for (i <- cbuf.buffer.limit - 1 to 0 by -1)
-            if (cbuf.buffer.get(i) == lineSeperator) return i
+            if (cbuf.buffer.get(i) == lineSeperator) return i + 1
           return -1
         }
 
         val eof = cbuf.window.eof(window)
         val lastSep = if (eof) cbuf.buffer.limit else indexOfLastLineSeperator
         if (lastSep > -1) {
-          if (!eof)
-            cbuf.buffer.limit(lastSep + 1)
+          cbuf.buffer.limit(lastSep)
           val string = cbuf.buffer.toString
           // size the buffer so we can try and always fit whole chars in it
           // eg. UTF-16 = 2 bytes should have a buffer size of 2, 4, 6...

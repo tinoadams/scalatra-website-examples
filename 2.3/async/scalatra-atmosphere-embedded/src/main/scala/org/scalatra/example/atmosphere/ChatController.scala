@@ -68,7 +68,8 @@ class ChatController extends ScalatraServlet
             command match {
               case "open_file" =>
                 val JString(filename) = json \ "filename"
-                val baseDir = "file:/Volumes/Data/workspaces/scala/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
+//                val baseDir = "file:/Volumes/Data/workspaces/scala/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
+                val baseDir = "file:/C:/projects/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
                 val uri = URI.create(baseDir + filename)
                 fileHandle = Some(new LineFile(uri))
                 send(json)

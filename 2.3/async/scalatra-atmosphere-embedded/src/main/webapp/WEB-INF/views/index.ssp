@@ -8,8 +8,8 @@
 		<p>{{model.buffer.index}}</>
 		<div ng-keydown="model.keypressed($event)" tabindex="0" id="viewer" style="float:left;width:40%;">
 		</div>
-		<div style="float:right;width:40%;font-size:8pt;">
+		<!--div style="float:right;width:40%;font-size:8pt;">
 		<p style="margin:0;padding:0;" ng-repeat="line in model.buffer.lines">{{line}}</p>
-		</div>
+		</div-->
 	</div>
 </div>

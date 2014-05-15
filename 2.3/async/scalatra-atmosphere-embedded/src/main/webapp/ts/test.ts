@@ -11,12 +11,12 @@ module TestModule {
             this.bottom = top + height - 1;
         }
 
-        reachedTop(): boolean {
-            return this.top <= 0;
+        reachedTop(lines: number): boolean {
+            return (this.top - lines) < 0;
         }
 
-        reachedEnd(lineCount: number): boolean {
-            return this.bottom >= lineCount - 1;
+        reachedEnd(lines: number, lineCount: number): boolean {
+            return (this.bottom + lines) >= lineCount;
         }
 
         inTopThird(lineCount: number): boolean {
@@ -29,12 +29,12 @@ module TestModule {
             return this.bottom >= boundary;
         }
 
-        up(): Window {
-            return new Window(this.top - 1, this.height);
+        up(lines: number): Window {
+            return new Window(this.top - lines, this.height);
         }
 
-        down(): Window {
-            return new Window(this.top + 1, this.height);
+        down(lines: number): Window {
+            return new Window(this.top + lines, this.height);
         }
 
         shift(lineCount: number): Window {
@@ -168,19 +168,19 @@ module TestModule {
                     this.start = response.actual_start;
                     this.end = response.actual_end;
                     console.log('start,end', response.actual_start, response.actual_end);
-                    var lines = _.map(response.lines, (line: string) => line + "(" + response.id + ")");
-                    lines.push('------------------' + "(" + response.id + ")");
+                    var lines = _.map(response.lines, (line: string) => line);
+                    //                                        lines.push('------------------' + "(" + response.id + ")");
                     return new Chunk(response.actual_start, response.actual_end, lines);
                 });
         }
 
         nextChunk(current: Chunk): ng.IPromise<Chunk> {
-            var start = current.end + 1;
+            var start = current.end;
             return this.readChunk(start, start + this.chunkSize);
         }
 
         previousChunk(current: Chunk): ng.IPromise<Chunk> {
-            var start = current.start - this.chunkSize - 1;
+            var start = current.start - this.chunkSize;
             return this.readChunk(start, start + this.chunkSize);
         }
 
@@ -196,6 +196,7 @@ module TestModule {
     }
 
     export class LineBuffer {
+        private visibleLinesBufferFactor = 6;
         private chunks: Chunk[] = [];
         public lines: string[] = [];
         public index: Window = new Window(0, 0);
@@ -216,7 +217,7 @@ module TestModule {
                     var i = 0;
                     while (i < bl) this.lines[al++] = chunk.lines[i++];
                     // rinse and repeat
-                    if (this.lines.length > this.visibleLines * 3)
+                    if (this.lines.length > this.visibleLines * this.visibleLinesBufferFactor)
                         return this.currentLines();
                     else
                         return this.addChunk(chunk);
@@ -231,7 +232,7 @@ module TestModule {
                     this.chunks = [chunk];
                     this.lines = _.map(chunk.lines, (line) => line);
                     // make sure we load at least three time the number of visible lines
-                    if (this.lines.length > this.visibleLines * 3)
+                    if (this.lines.length > this.visibleLines * this.visibleLinesBufferFactor)
                         return this.currentLines();
                     else
                         return <string[]>this.addChunk(chunk);
@@ -246,8 +247,8 @@ module TestModule {
             return list;
         }
 
-        lineUp($scope): string {
-            if (this.index.reachedTop()) return;
+        private up(lines: number): string[] {
+            if (this.index.reachedTop(lines)) return null;
             // append new lines to the buffer and drop old ones on top
             if (!this.index.inBottomThird(this.lines.length) && this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var firstChunk = this.chunks[0];
@@ -277,12 +278,12 @@ module TestModule {
                         });
                 }
             }
-            this.index = this.index.up();
-            return this.lines[this.index.top];
+            this.index = this.index.up(lines);
+            return this.lines.slice(this.index.top, this.index.top + lines);
         }
 
-        lineDown($scope): string {
-            if (this.index.reachedEnd(this.lines.length)) return;
+        private down(lines: number): string[] {
+            if (this.index.reachedEnd(lines, this.lines.length)) return null;
             // append new lines to the buffer and drop old ones on top
             if (this.index.inBottomThird(this.lines.length) && !this.index.inTopThird(this.lines.length) && this.chunks.length && this.serverFile) {
                 var lastChunk = this.chunks[this.chunks.length - 1];
@@ -314,8 +315,30 @@ module TestModule {
                         //                        console.log("index , buffer, chunks", this.index, this.buffer.length, this.chunks.length);
                     });
             }
-            this.index = this.index.down();
-            return this.lines[this.index.bottom];
+            this.index = this.index.down(lines);
+            return this.lines.slice(this.index.bottom, this.index.bottom + lines);
+        }
+
+        lineUp(): string {
+            var line = this.up(1);
+            if (!line || !line.length)
+                return null;
+            return line[0];
+        }
+
+        lineDown(): string {
+            var line = this.down(1);
+            if (!line || !line.length)
+                return null;
+            return line[0];
+        }
+
+        pageUp(): string[] {
+            return this.up(this.visibleLines);
+        }
+
+        pageDown(): string[] {
+            return this.down(this.visibleLines);
         }
     }
 
@@ -337,6 +360,10 @@ module TestModule {
                 this.lineUp();
             else if (event.keyCode == 40)
                 this.lineDown();
+            else if (event.keyCode == 33)
+                this.pageUp();
+            else if (event.keyCode == 34)
+                this.pageDown();
         }
 
         private renderLine(msg: string): string {
@@ -344,7 +371,7 @@ module TestModule {
         }
 
         lineUp(): void {
-            var line = this.buffer.lineUp(this.$scope);
+            var line = this.buffer.lineUp();
             if (line) {
                 var viewer: any = $("#viewer");
                 var children: any = viewer.children();
@@ -356,7 +383,7 @@ module TestModule {
         }
 
         lineDown(): void {
-            var line = this.buffer.lineDown(this.$scope);
+            var line = this.buffer.lineDown();
             if (line) {
                 var viewer: any = $("#viewer");
                 viewer.children()[0].remove();
@@ -364,18 +391,30 @@ module TestModule {
             }
         }
 
+        private showLines(lines: string[]): void {
+            var viewer: any = $("#viewer");
+            var p = _.reduce(lines, (acc: string, line) => acc + this.renderLine(line), "");
+            viewer.html(p);
+        }
+
+        pageUp(): void {
+            var lines = this.buffer.pageUp();
+            if (lines && lines.length)
+                this.showLines(lines)
+        }
+
+        pageDown(): void {
+            var lines = this.buffer.pageDown();
+            if (lines && lines.length)
+                this.showLines(lines)
+        }
+
         openFile(filename: string) {
             this.serverFile.openFile(filename)
                 .then((response) => {
                     this.buffer.setFile(this.serverFile)
-                        .then((lines) => {
-                            var viewer: any = $("#viewer");
-                            var p = _.reduce(lines, (acc: string, line) => acc + this.renderLine(line), "");
-                            viewer.html(p);
-                        })
-                        .catch((response) => {
-                            console.log('failure', response);
-                        });
+                        .then((lines) => this.showLines(lines))
+                        .catch((response) => console.log('failure', response));
 
                 })
                 .catch((response) => {

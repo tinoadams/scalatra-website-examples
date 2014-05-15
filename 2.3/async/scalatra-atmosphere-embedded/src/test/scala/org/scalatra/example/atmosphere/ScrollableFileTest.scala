@@ -6,13 +6,33 @@ import scala.concurrent._
 import scala.concurrent.duration._
 
 class ScrollableFileTest {
+  def str(lines: Array[String]) = lines.foldLeft("") { case (acc, line) => acc + line.replace('\n', ' ').replace('\r', ' ') }
+
   @Test
   def multipleLinesInBuffer() {
-    val filename = this.getClass().getResource("LongTextUtf8.txt").toURI()
+    val filename = this.getClass().getResource("angular.js").toURI()
     println(filename)
+    val start = 0
+    val size = 64
     val f = new LineFile(filename, "UTF-8")
-    for (l <- Await.result(f.readLines(Window(0,10000)), 100 seconds).buffer)
-      println("Line: " + l)
+    // chunk with given size
+    val b1 = Await.result(f.readLines(Window(start, start + size)), 10 seconds);
+    // chunk with actual size returned by b1
+    val b2 = Await.result(f.readLines(b1.window), 10 seconds);
+//    println(b1.window)
+//    println(b2.window)
+    assertEquals(str(b1.buffer), str(b2.buffer))
+
+//    // second chunk after b1
+    val startAfterB1 = b1.window.end
+    val end = startAfterB1 + size
+    val b3 = Await.result(f.readLines(Window(startAfterB1, end)), 10 seconds);
+    // whole chunk including b1
+    val b4 = Await.result(f.readLines(Window(start, end)), 10 seconds);
+    println(str(b1.buffer))
+    println((" " * str(b1.buffer).length) + str(b3.buffer))
+    println(str(b4.buffer))
+    assertEquals(str(b1.buffer) + str(b3.buffer), str(b4.buffer))
   }
 
   /*@Test
