@@ -37,7 +37,8 @@ object build extends Build {
         "org.eclipse.jetty"           %  "jetty-plus"          % jettyVersion      % "compile;provided",
         "org.eclipse.jetty"           %  "jetty-webapp"        % jettyVersion      % "compile",
         "org.eclipse.jetty.websocket" %  "websocket-server"    % jettyVersion      % "compile;provided",
-        "javax.servlet"               %  "javax.servlet-api"   % "3.1.0"           % "compile;provided;test"
+        "javax.servlet"               %  "javax.servlet-api"   % "3.1.0"           % "compile;provided;test",
+        "org.apache.commons"		  %  "commons-lang3"	   % "3.3.2"
       ),
       scalateTemplateConfig in Compile <<= (sourceDirectory in Compile){ base =>
         Seq(

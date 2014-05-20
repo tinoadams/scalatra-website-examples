@@ -195,14 +195,15 @@ var TestModule;
     var LineBuffer = (function () {
         function LineBuffer(visibleLines) {
             this.visibleLines = visibleLines;
-            this.visibleLinesBufferFactor = 4;
+            this.visibleLinesBufferFactor = 30;
             this.chunks = [];
             this.lines = [];
             this.index = new Window(0, 0);
+            this.lineCount = 0;
             this.index = new Window(0, 0);
         }
         LineBuffer.prototype.suffientChunksLoaded = function () {
-            return this.chunks.length > 2 && this.lines.length > this.visibleLines * this.visibleLinesBufferFactor;
+            return this.lines.length > this.visibleLines * this.visibleLinesBufferFactor;
         };
 
         LineBuffer.prototype.addChunk = function (lastChunk) {
@@ -248,18 +249,26 @@ var TestModule;
             return list;
         };
 
+        LineBuffer.prototype.bufferedLineCount = function () {
+            this.lineCount = _.reduce(this.chunks, function (count, chunk) {
+                return count + chunk.lines.length;
+            }, 0);
+            return this.lineCount;
+        };
+
         LineBuffer.prototype.up = function (lines) {
             var _this = this;
             if (this.index.reachedTop())
                 return null;
             this.index = this.index.up(lines);
 
-            if (!this.index.inBottomThird(this.lines.length) && this.index.inTopThird(this.lines.length) && this.serverFile) {
+            var lineCount = this.bufferedLineCount();
+            if (!this.index.inBottomThird(lineCount) && this.index.inTopThird(lineCount) && this.serverFile) {
                 var firstChunk = this.chunks[0];
 
                 if (firstChunk.start > 0) {
                     this.serverFile.previousChunk(firstChunk).then(function (chunk) {
-                        if (_this.suffientChunksLoaded()) {
+                        if (_this.suffientChunksLoaded() && _this.chunks.length > 2) {
                             var lastChunk = _this.chunks.pop();
                             var count = lastChunk.lines.length;
                             _this.lines.splice(_this.lines.length - count, count);
@@ -282,10 +291,11 @@ var TestModule;
                 return null;
             this.index = this.index.down(lines, this.lines.length);
 
-            if (this.index.inBottomThird(this.lines.length) && !this.index.inTopThird(this.lines.length) && this.serverFile) {
+            var lineCount = this.bufferedLineCount();
+            if (this.index.inBottomThird(lineCount) && !this.index.inTopThird(lineCount) && this.serverFile) {
                 var lastChunk = this.chunks[this.chunks.length - 1];
                 this.serverFile.nextChunk(lastChunk).then(function (chunk) {
-                    if (_this.suffientChunksLoaded()) {
+                    if (_this.suffientChunksLoaded() && _this.chunks.length > 2) {
                         var firstChunk = _this.chunks.shift();
                         var count = firstChunk.lines.length;
                         _this.lines.splice(0, count);
@@ -336,16 +346,16 @@ var TestModule;
             var _this = this;
             this.$scope = $scope;
             this.$q = $q;
-            this.buffer = new LineBuffer(5);
+            this.buffer = new LineBuffer(20);
             this.connectionOpen = false;
-            this.filename = 'angular.js';
+            this.filename = 'nusoap.php';
             $scope.model = this;
             var onConnectionChanged = function (open) {
                 return $scope.$apply(function () {
                     _this.connectionOpen = open;
                 });
             };
-            this.serverFile = new ServerFile($q, 32, onConnectionChanged);
+            this.serverFile = new ServerFile($q, 2048, onConnectionChanged);
         }
         TestController.prototype.keypressed = function (event) {
             if (event.keyCode == 38)

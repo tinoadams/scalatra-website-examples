@@ -1,15 +1,16 @@
-<div class="row" ng-controller="TestController">
+<div class="row" ng-controller="TestController" style="width:100%;">
 	<p ng-show="model.connectionOpen">Connected</p>
 	
 	<input type="text" ng-model="model.filename"/>
 	<button ng-click="model.openFile(model.filename)">Open File</button>
 	
 	<div style="width:100%;">
-		<p>{{model.buffer.index}}</>
-		<div ng-keydown="model.keypressed($event)" tabindex="0" id="viewer" style="float:left;width:40%;">
+		<p>{{model.buffer.index}}</p>
+		<p>{{model.buffer.lineCount}}</p>
+		<div ng-keydown="model.keypressed($event)" tabindex="0" id="viewer" style="float:left;width:40%; overflow:scroll;">
 		</div>
-		<div style="float:right;width:40%;font-size:8pt;">
-		<p style="margin:0;padding:0;" ng-repeat="(index,line) in model.buffer.lines">{{index}} -> {{line}}</p>
-		</div>
+		<!--div style="float:right;width:40%;font-size:8pt;">
+		<p ng-repeat="(index,line) in model.buffer.lines">{{index}} -> {{line}}</p>
+		</div-->
 	</div>
 </div>

@@ -59,17 +59,15 @@ class ChatController extends ScalatraServlet
           send(("author" -> "system") ~ ("message" -> "Only json is allowed") ~ ("time" -> (new Date().getTime.toString)))
 
         case JsonMessage(json) =>
-          println(json)
-
-          val JInt(commandId) = json \ "id"
-          val JString(command) = json \ "command"
-
           try {
+            val JInt(commandId) = json \ "id"
+            val JString(command) = json \ "command"
+
             command match {
               case "open_file" =>
                 val JString(filename) = json \ "filename"
                 val baseDir = "file:/Volumes/Data/workspaces/scala/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
-//                val baseDir = "file:/C:/projects/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
+                //                val baseDir = "file:/C:/projects/scalatra-website-examples/2.3/async/scalatra-atmosphere-embedded/target/scala-2.10/test-classes/org/scalatra/example/atmosphere/"
                 val uri = URI.create(baseDir + filename)
                 fileHandle = Some(new LineFile(uri))
                 send(json)
@@ -84,7 +82,7 @@ class ChatController extends ScalatraServlet
                     val me = Me
                     file.readLines(Window(start.toLong, end.toLong)).map { readbuffer =>
                       val result = json merge (
-                        ("lines" -> readbuffer.buffer.toList)
+                        ("lines" -> readbuffer.buffer.toList.map(org.apache.commons.lang3.StringEscapeUtils.escapeHtml4))
                         ~ ("actual_start" -> readbuffer.window.start)
                         ~ ("actual_end" -> readbuffer.window.end)
                       )
@@ -94,7 +92,9 @@ class ChatController extends ScalatraServlet
             }
           }
           catch {
-            case e: Throwable => send(addError(json, e.getMessage()))
+            case e: Throwable =>
+              println("Received: " + json)
+              send(addError(json, e.getMessage()))
           }
       }
     }
